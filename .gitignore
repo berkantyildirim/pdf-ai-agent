@@ -1,0 +1,15 @@
+# API anahtarı asla yayınlanmaz
+.env
+
+# Python derleme dosyaları
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Çalışma çıktıları
+ciktilar/
+
+# Editör / OS
+.vscode/
+.idea/
+Thumbs.db
