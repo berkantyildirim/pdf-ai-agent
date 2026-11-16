@@ -1,5 +1,15 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""fix_save.py - main.py icindeki _save_output girinti hatasini duzeltir.
+
+Dosya       : fix_save.py
+Proje       : Doktor Bruce Banner (pdf-ai-agent)
+Gorevi      : "def _save_output" satirinin fazladan girintili
+              (indent) haliyle olusan SyntaxError'i duzeltir.
+Durum       : TEK SEFERLIK GECMIS BAKIM BETIGI. Sorun giderildigi
+              icin yeniden calistirmak "old save not found" basar.
+Not         : main.py dosyasini duzenler; yedek almaniz önerilir.
+"""
 
 with open('C:\\Users\\pc\\Documents\\Varsayılan Proje\\pdf-ai-agent\\main.py', 'r', encoding='utf-8') as f:
     c = f.read()
@@ -24,4 +34,3 @@ else:
         print('Alt yolu buldu')
     else:
         print('Alternatif de bulamadı')
-"

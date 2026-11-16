@@ -1,4 +1,14 @@
-"""GUI test script."""
+"""GUI test scripti - arayuzun hatasiz acildigini dogrular.
+
+Dosya       : test_gui.py
+Proje       : Doktor Bruce Banner (pdf-ai-agent)
+Gorevi      : App nesnesini mainloop'a girmeden olusturur; pencere
+              basligi, olcusu ve busy durumunu yazdirarak arayuz
+              kurulumunun (widget baglantilarinin) hata vermedigini
+              kontrol eder.
+Kullanim    : python test_gui.py
+Not         : mainloop() CALISTIRILMAZ; aksi halde betik kilitlenir.
+"""
 import sys
 import os
 
@@ -7,8 +17,10 @@ project_dir = r"C:\Users\pc\Documents\Varsayılan Proje\pdf-ai-agent"
 if project_dir not in sys.path:
     sys.path.insert(0, project_dir)
 
+# Calisma klasorunu de projeye cevir (config.py .env'i oradan okur)
 os.chdir(project_dir)
 
+# App'i dogrudan ice aktar: tkinter penceresi burada olusturulur
 from main import App
 
 try:

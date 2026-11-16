@@ -3,21 +3,41 @@
 Literatur taraması için PDF okuyan, ozetleyen ve soru-cevap yapan
 modern masaüstü uygulaması (Doctor Bruce Banner).
 
+Dosya       : main.py  (projenin giris noktasi ve GUI sinifi)
+Proje       : Doktor Bruce Banner (pdf-ai-agent)
+Yazar       : imamaslan46
 Kurulum:
 --------
-1. Gerekli kütüphaneler: pip install -r requirements.txt
-2. Gemini API anahtarı: .env dosyasına GEMINI_API_KEY ekle
-3. Başlat: python main.py
+1. Gerekli kutuphaneler: pip install -r requirements.txt
+2. Gemini API anahtari: .env dosyasina GEMINI_API_KEY ekle
+3. Baslat: python main.py
 
 Fonksiyonellik:
 --------------
-- PDF dosyası seçme ve metin çıkarma
-- Kısa/Orta/Uzun özet üretme
-- PDF üzerine soru-cevap (sayfa atılı)
-- Anahtar kelime ve yöntem analizi
-- PDF önizleme ve sayfa aralığı seçimi
-- Özetin otomatik kaydedilmesi
-- Sonuçları kaydetme ve masaüstü kisayolu
+- PDF dosyasi secme ve metin cikarma
+- Kisa/Orta/Uzun ozet uretme
+- PDF uzerine soru-cevap (sayfa atili)
+- Anahtar kelime ve yontem analizi
+- PDF onizleme ve sayfa araligi secimi
+- Ozetin otomatik kaydedilmesi
+- Sonuclari kaydetme ve masaustu kisayolu
+
+Dosya Yapisi (sinif ici bolum sirasi):
+--------------------------------------
+  1. Tema ve stil ayarlari     : renk/konstant tanimlari
+  2. App.__init__              : pencere + durum degiskenleri
+  3. _build_*                  : arayuz kurulumu (sol/sag panel, durum cubugu)
+  4. Islem akisi               : _check_api_key, _set_status, _run_task
+  5. Dosya islemi              : _choose_file, _load_range, onizleme
+  6. Islem fonksiyonlari       : ozet / anahtar kelime / soru-cevap
+  7. Yardimci fonksiyonlar     : _get_context, _append_output_box
+  8. Kaydetme                  : _save_output (ciktilar/*.txt)
+
+Teknik Not:
+----------
+Tum AI cagrilari _run_task() icinde AYRI THREAD'de calisir; arayuz
+kilitlenmesin diye sonuc main thread'e self.after(0, ...) ile geri
+gonderilir. Tkinter'da widget'lar yalnizca ana thread'de degistirilebilir.
 """
 
 import threading
@@ -339,6 +359,7 @@ class App(ctk.CTk):
         )
         self.status_label.grid(row=0, column=0, sticky="w", padx=(0, 8))
 
+        # Belirsiz modda donen ilerleme cubugu (calisirken hareket eder)
         self.progress_bar = ctk.CTkProgressBar(
             self.status_bar, width=150, mode="indeterminate"
         )
@@ -351,11 +372,15 @@ class App(ctk.CTk):
         )
         self.time_label.grid(row=0, column=2, sticky="e", padx=(0, 0))
 
-        # Zamanı güncelle
+        # Zamanı güncelle (ilk cagri burada yapilir)
         self._update_time()
 
     def _update_time(self):
-        """Saat'i güncelle."""
+        """Saat'i güncelle.
+
+        Her saniye kendini yeniden planlayarak durum cubugundaki
+        saati tazeler (after() bloklayici degildir).
+        """
         now = datetime.now().strftime("%H:%M:%S")
         self.time_label.configure(text=now)
         self.after(1000, self._update_time)
@@ -379,18 +404,27 @@ class App(ctk.CTk):
             )
 
     def _set_status(self, text: str, busy: bool = False):
-        """Durum çubuğunu guncelle."""
+        """Durum çubuğunu guncelle.
+
+        busy=True iken yaziyi kirmiziya cevirir ve ilerleme cubugunu
+        baslatir; is bitince normale doner. busy ayni zamanda yeni
+        islem baslatmayi engelleyen kilit olarak kullanilir.
+        """
         self.status_label.configure(text=text, text_color=COLOR_ACCENT if not busy else COLOR_WARNING)
         if busy:
-            self.progress_bar.start(12)
+            self.progress_bar.start(12)  # 12ms adimla don
         else:
             self.progress_bar.stop()
             self.progress_bar.set(0)
         self.busy = busy
-        self.update_idletasks()
+        self.update_idletasks()  # degisiklik aninda ekrana yansisin
 
     def _run_task(self, func):
-        """Gorevi arka planda calistir (thread)."""
+        """Gorevi arka planda calistir (thread).
+
+        GUI donmasin diye AI cagrisi ayri thread'de yapilir;
+        sonuclar self.after(0, ...) ile ana thread'e tasinir.
+        """
         if self.busy:
             messagebox.showwarning("Bekleyin", "Bir islem zaten devam ediyor.")
             return
@@ -403,6 +437,7 @@ class App(ctk.CTk):
         self.progress_bar.start(12)
 
         def worker():
+            """Thread govdesi: hatalari yakalar, durumu geri bildirir."""
             try:
                 func()
                 # Basarili sonucta history kaydet
@@ -418,10 +453,12 @@ class App(ctk.CTk):
                 )
                 self.after(0, lambda: self._set_status("Hata", busy=False))
             finally:
+                # Kilidi her durumda birak ki uygulama kilitlenmesin
                 self.after(0, lambda: self.progress_bar.stop())
                 self.after(0, lambda: self.progress_bar.set(0))
                 self.busy = False
 
+        # daemon=True: pencere kapaninca thread zorla bitsin
         threading.Thread(target=worker, daemon=True).start()
 
     # ---------- Dosya Islemi ----------
@@ -512,7 +549,11 @@ class App(ctk.CTk):
         self.preview_box.configure(state="disabled")
 
     def _toggle_qa_view(self):
-        """Soru-cevap sekmesinin aktif/pasif olmasını toggle eder."""
+        """Soru-cevap sekmesinin aktif/pasif olmasını toggle eder.
+
+        Sol paneldeki buton tek tikla "Sonuç" ve "Soru-Cevap"
+        sekmeleri arasinda gecis yapar.
+        """
         # Tabview current index'i değiştir
         current = self.tabs.get()
         if current == "❓ Soru-Cevap":
@@ -523,29 +564,42 @@ class App(ctk.CTk):
         self.question_entry.delete(0, "end")
 
     def _clear_output(self):
-        """Output'lari temizle."""
+        """Output'lari temizle.
+
+        Yeni PDF acildiginda onceki belgenin sonuclari karismasin
+        diye tum kutular ve soru alani sifirlanir.
+        """
         self._append_output_box("", self.output_box)
         self._append_output_box("", self.qa_output)
         self.question_entry.delete(0, "end")
 
     # ---------- Islem Fonksiyonlari ----------
     def _do_summarize(self):
-        """Özetiüretil ve kaydet."""
+        """Özetiüretil ve kaydet.
+
+        Once guncel sayfa araliginin metnini alir, sonra
+        _summarize_worker'i arka planda calistirir.
+        """
         context = self._get_context()
         if not context:
-            return
-        detail = self.detail_var.get()
+            return  # metin yoksa sessizce dur (uyariyi _get_context verdi)
+        detail = self.detail_var.get()  # kisa / orta / uzun
         self._run_task(lambda: self._summarize_worker(context, detail))
 
     def _summarize_worker(self, context: str, detail: str):
         """Özet çalışan (arka planda)."""
         result = self.engine.summarize(context, detail=detail)
+        # sonucu ana thread'e tas (Tkinter kurali)
         self.after(0, lambda: self._append_output_box(result, self.output_box))
         # Özeti otomatik kaydet
         self._save_output_internal(result)
 
     def _save_output_internal(self, text: str):
-        """İçeriği otomatik kaydet."""
+        """İçeriği otomatik kaydet.
+
+        Kullaniciya sormadan ciktilar/ klasorune yazar;
+        dosya adi: <pdf_adi>_<yilaygun>_saat.txt
+        """
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         base = (self.doc.name if self.doc else "bilgi").replace(".pdf", "")
         out_path = OUTPUT_DIR / f"{base}_{stamp}.txt"
@@ -562,7 +616,7 @@ class App(ctk.CTk):
         self._run_task(lambda: self._keywords_worker(context))
 
     def _keywords_worker(self, context: str):
-        """Anahtar kelime worker."""
+        """Anahtar kelime worker (arka planda)."""
         result = self.engine.keywords(context)
         self.after(0, lambda: self._append_output_box(result, self.output_box))
 
@@ -590,21 +644,32 @@ class App(ctk.CTk):
 
     # ---------- Yardimci Fonksiyonlar ----------
     def _get_context(self) -> str:
-        """Aktif metin aralığını dondur."""
+        """Aktif metin aralığını dondur.
+
+        Kullanicinin girdigi sayfa araligini guvenli bicime cevirir
+        (sinirlar sicrar, ters giris olursa takas eder) ve o araligin
+        metnini AI'a gonderilmek uzere dondurur.
+        Metin cok kisaysa bos doner; boylece bos yere istek atilmaz.
+        """
         if self.doc is None:
             messagebox.showwarning("Uyarı", "Önce bir PDF dosyası secin.")
             return ""
         try:
+            # --- Sayfa araligini oku ve temizle ---
             raw_from = self.page_from.get().strip()
             raw_to = self.page_to.get().strip()
             start = int(raw_from) if raw_from else 1
             end = int(raw_to) if raw_to else self.doc.page_count
+            # sinirlari dosya uzunluguna sikistir
             start = max(1, min(start, self.doc.page_count))
             end = max(1, min(end, self.doc.page_count))
             if start > end:
-                start, end = end, start
+                start, end = end, start  # ters girilmissa takas et
+
+            # --- Metni al ---
             text, _ = get_text(self.doc, start, end)
             if len(text) < 50:
+                # bos/taranmis PDF: istek atmadan uyar
                 messagebox.showwarning(
                     "Uyarı",
                     "Seçili aralıkta metin yok. Tüm PDF mi yüklünüz?",
@@ -616,7 +681,12 @@ class App(ctk.CTk):
             return ""
 
     def _append_output_box(self, text: str, box: ctk.CTkTextbox):
-        """Output butuncesine metin ekle (thread-safe)."""
+        """Output butuncesine metin ekle (thread-safe).
+
+        Kutu normalde 'disabled' (yazilamaz) tutulur; yazmak icin
+        kisa sureligine acilir, sonra tekrar kilitlenir. Boylece
+        kullanici ciktinin uzerine elle yazamaz.
+        """
         box.configure(state="normal")
         box.delete("1.0", "end")
         box.insert("1.0", text)
@@ -626,7 +696,11 @@ class App(ctk.CTk):
 
     # ---------- Kaydetme ----------
     def _save_output(self):
-        """Sonucu kaydet (manuel)."""
+        """Sonucu kaydet (manuel).
+
+        Hangi sekme aciksa o kutunun icerigini ciktilar/ altina yazar;
+        dosya adi PDF adi + zaman damgasi ile cakismayi onler.
+        """
         # Hangi sekmede focus olduguna bagli
         source = self.output_box if self.tabs.get() == "📄 Sonuç" else self.qa_output
         text = source.get("1.0", "end").strip()
@@ -645,4 +719,6 @@ class App(ctk.CTk):
 
 # ---------- Uygulama Başlatma ----------
 if __name__ == "__main__":
+    # Dogrudan calistirilmissa pencereyi ac
+    # (import edilirse calismaz - test_gui.py icin bu onemli)
     App().mainloop()

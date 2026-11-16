@@ -1,6 +1,13 @@
 """Masaüstü simgesi (ikon) ve kisayol olusturur.
 
-Kullanim: python create_shortcut.py
+Dosya       : create_shortcut.py
+Proje       : Doktor Bruce Banner (pdf-ai-agent)
+Gorevi      : 1) banner.ico dosyasini kod ile cizer (hulk temali)
+              2) Masauste "Doktor Bruce Banner.lnk" kisayolunu olusturur
+Kullanim    : python create_shortcut.py
+Bagimlilik  : Pillow (ikon cizimi), pywin32 (kisayol; yoksa elle kurulum
+              talimati basar)
+Cikti       : banner.ico + masaustu kisayolu
 """
 
 import sys
@@ -9,15 +16,21 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter
 
+# Proje klasoru ve uretilecek dosya yollari
 BASE = Path(__file__).resolve().parent
 ICO_PATH = BASE / "banner.ico"
 LNK_NAME = "Doktor Bruce Banner.lnk"
 
 
 def make_icon_hulk_face() -> bool:
-    """Hulk yuzu/karakteri temelli ikon uretir (yeşil/ mor renkler)."""
+    """Hulk yuzu/karakteri temelli ikon uretir (yeşil/ mor renkler).
+
+    256x256 RGBA olarak cizilir; kaydederken birden fazla boyut
+    (16..256) ayni .ico dosyasina yazilir ki Windows her yerde
+    net gorunsun.
+    """
     S = 256
-    img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    img = Image.new("RGBA", (S, S), (0, 0, 0, 0))  # seffaf tuval
     d = ImageDraw.Draw(img)
 
     # 1. Koyu mor/kara arka plan
@@ -64,30 +77,42 @@ def make_default_icon() -> None:
 
 
 def create_shortcut() -> Path | None:
-    """Windows .lnk kisayolu olusturur."""
+    """Windows .lnk kisayolu olusturur.
+
+    Kisayol, mevcut python yorumlayicisini main.py dosyasina
+    baglar; boylece "python main.py" komutunu iki tikla calistirir.
+
+    Returns:
+        olusturulan .lnk yolu, ya da pywin32 yoksa None
+    """
     try:
         import win32com.client  # type: ignore
     except ImportError:
+        # pywin32 kurulu degilse programi yikmaya gerek yok:
+        # elle kurulum talimati basilir
         print("pywin32 kurulu degil, kisayol otomatik olusturulamadi.")
         return None
 
+    # Masaustu OneDrive altinda da olabilir (Windows vardiya kurulumu)
     desktop = Path.home() / "Desktop"
     if not desktop.exists():
         desktop = Path.home() / "OneDrive" / "Desktop"
     lnk_path = desktop / LNK_NAME
 
+    # .lnk alanlarini doldur
     shell = win32com.client.Dispatch("WScript.Shell")
     shortcut = shell.CreateShortCut(str(lnk_path))
-    shortcut.TargetPath = sys.executable
-    shortcut.Arguments = f'"{BASE / "main.py"}"'
-    shortcut.WorkingDirectory = str(BASE)
-    shortcut.IconLocation = f"{ICO_PATH},0"
+    shortcut.TargetPath = sys.executable  # hangi python ile acilsin
+    shortcut.Arguments = f'"{BASE / "main.py"}"'  # calistirilacak dosya
+    shortcut.WorkingDirectory = str(BASE)  # .env buradan okunur
+    shortcut.IconLocation = f"{ICO_PATH},0"  # banner.ico
     shortcut.Description = "Doktor Bruce Banner - PDF Literatur Tarama Asistani"
     shortcut.save()
     return lnk_path
 
 
 def main():
+    """Ikonu uret, sonra kisayolu olustur; eksikse elle talimat ver."""
     # 1) Hulk yuzu ile ikon uret
     print("Hulk ikonu uretiliyor...")
     if not make_icon_hulk_face():
@@ -101,6 +126,7 @@ def main():
     if lnk:
         print(f"Kisayol: {lnk}")
     else:
+        # pywin32 yoksa kullaniciya adim adim elle kurulum soyle
         print(
             "\nKisayoli elle olustur:\n"
             f'  Masaustune sag tik -> Yeni -> Kisayol\n'
